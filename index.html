@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827"><meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json"><title>AK FOODS V4</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Arial,sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:#fff;padding:14px 18px;position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:22px}.badge{font-size:12px;opacity:.8}.tabs{display:flex;gap:7px;padding:10px;background:#fff;position:sticky;top:57px;z-index:9;overflow:auto;border-bottom:1px solid #ddd}
+button{border:0;border-radius:9px;padding:10px 13px;background:#111827;color:#fff;font-weight:650;cursor:pointer}
+button.secondary{background:#e5e7eb;color:#111827}button.danger{background:#b91c1c}button.success{background:#047857}
+button:disabled{opacity:.45}.tab.active{background:#111827;color:#fff}.tab{background:#e5e7eb;color:#111827;white-space:nowrap}
+main{max-width:1050px;margin:auto;padding:14px}.card{background:#fff;border-radius:13px;padding:15px;margin-bottom:12px;box-shadow:0 1px 5px #00000012}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+input,select{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:9px;font-size:16px;margin:4px 0 9px}
+label{font-size:13px;color:#4b5563}.stat{font-size:25px;font-weight:750}.muted{color:#6b7280}.dangerText{color:#b91c1c;font-weight:700}
+.row{display:flex;justify-content:space-between;align-items:center;gap:9px}.item{padding:10px 0;border-top:1px solid #eee}.total{text-align:right;font-size:22px;font-weight:800}
+.actions{display:flex;gap:7px;flex-wrap:wrap}.pill{display:inline-block;background:#eef2ff;padding:4px 8px;border-radius:99px;font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #eee}.right{text-align:right}
+#scanner{width:100%;max-height:300px;object-fit:cover;border-radius:10px;background:#111;display:none}.notice{padding:10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:9px}
+@media(max-width:600px){header{top:0}.tabs{top:56px}main{padding:9px}.card{padding:12px}}
+</style></head>
+<body>
+<header><div><h1>AK FOODS</h1><span class="badge">Tablet Full App • GST 0%</span></div><span id="online" class="badge"></span></header>
+<nav class="tabs">
+<button class="tab active" onclick="go('home',this)">Home</button>
+<button class="tab" onclick="go('bill',this)">New Bill</button>
+<button class="tab" onclick="go('stock',this)">Stock</button>
+<button class="tab" onclick="go('customers',this)">Customers</button>
+<button class="tab" onclick="go('reports',this)">Reports</button>
+<button class="tab" onclick="go('settings',this)">Backup/Settings</button>
+</nav>
+<main id="app"></main>
+<video id="scanner" playsinline></video>
+<script>
+const KEY='akfoods_v4'; const old=localStorage.getItem('akfoods_v1');
+let db=JSON.parse(localStorage.getItem(KEY)||'{"products":[],"bills":[],"customers":[],"settings":{"shop":"AK FOODS","gst":0,"nextBill":1}}');
+if(!db.settings)db.settings={shop:'AK FOODS',gst:0,nextBill:1}; if(!db.customers)db.customers=[]; if(!db.bills)db.bills=[]; if(!db.products)db.products=[];
+let cart=[], editing=null;
+const $=id=>document.getElementById(id), money=n=>'₹'+Number(n||0).toFixed(2);
+function save(){localStorage.setItem(KEY,JSON.stringify(db))}
+function today(){return new Date().toDateString()}
+function go(page,el){
+ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); if(el)el.classList.add('active');
+ if(page==='home')home(); if(page==='bill')bill(); if(page==='stock')stock(); if(page==='customers')customers(); if(page==='reports')reports(); if(page==='settings')settings();
+}
+function home(){
+ let bs=db.bills.filter(b=>new Date(b.date).toDateString()===today()),sales=bs.reduce((s,b)=>s+b.total,0),profit=bs.reduce((s,b)=>s+b.profit,0),low=db.products.filter(p=>p.stock<=p.min).length;
+ $('app').innerHTML=`<div class="grid">
+ <div class="card"><div class="muted">Today's Sales</div><div class="stat">${money(sales)}</div></div>
+ <div class="card"><div class="muted">Today's Profit</div><div class="stat">${money(profit)}</div></div>
+ <div class="card"><div class="muted">Products</div><div class="stat">${db.products.length}</div></div>
+ <div class="card"><div class="muted">Low Stock</div><div class="stat ${low?'dangerText':''}">${low}</div></div></div>
+ <div class="card"><h3>Quick actions</h3><div class="actions"><button onclick="go('bill',document.querySelectorAll('.tab')[1])">Create Bill</button><button class="secondary" onclick="go('stock',document.querySelectorAll('.tab')[2])">Add Stock</button></div></div>
+ <div class="card"><h3>Recent bills</h3>${db.bills.slice(-5).reverse().map(b=>`<div class="item row"><span><b>${b.no}</b><br><small>${b.customer||'Walk-in'} • ${new Date(b.date).toLocaleString()}</small></span><b>${money(b.total)}</b></div>`).join('')||'<p class="muted">No bills yet.</p>'}</div>`;
+}
+function stock(){
+ let q=window.stockq||''; let list=db.products.filter(p=>(p.name+' '+p.code).toLowerCase().includes(q.toLowerCase()));
+ $('app').innerHTML=`<div class="card"><h3>${editing!==null?'Edit Product':'Add Product'}</h3>
+ <input id="pn" placeholder="Product name"><input id="pc" placeholder="Barcode / product code">
+ <div class="grid"><div><label>Purchase price</label><input id="pb" type="number" min="0"></div><div><label>Selling price</label><input id="ps" type="number" min="0"></div><div><label>Current stock</label><input id="pq" type="number" min="0"></div><div><label>Minimum stock</label><input id="pm" type="number" min="0"></div></div>
+ <div class="actions"><button onclick="saveProduct()">${editing!==null?'Update':'Add Product'}</button>${editing!==null?'<button class="secondary" onclick="editing=null;stock()">Cancel</button>':''}<button class="secondary" onclick="scanCode()">📷 Scan Barcode</button></div>
+ <video id="scanner" playsinline></video><p id="scanmsg" class="muted"></p></div>
+ <div class="card"><div class="row"><h3>Inventory</h3><span class="pill">${db.products.length} products</span></div><input placeholder="Search name / code" value="${q.replace(/"/g,'&quot;')}" oninput="window.stockq=this.value;stock()">
+ ${list.map((p,i)=>{let idx=db.products.indexOf(p);return `<div class="item"><div class="row"><b>${p.name}</b><b>${money(p.sell)}</b></div><div class="small muted">Code: ${p.code||'-'} • Cost: ${money(p.buy)} • Stock: <b class="${p.stock<=p.min?'dangerText':''}">${p.stock}</b></div><div class="actions" style="margin-top:7px"><button class="secondary" onclick="editProduct(${idx})">Edit</button><button onclick="stockIn(${idx})">Stock In</button><button class="danger" onclick="deleteProduct(${idx})">Delete</button></div></div>`}).join('')||'<p class="muted">No products.</p>'}</div>`;
+ if(editing!==null){let p=db.products[editing];pn.value=p.name;pc.value=p.code||'';pb.value=p.buy;ps.value=p.sell;pq.value=p.stock;pm.value=p.min}
+}
+function saveProduct(){let p={name:$('pn').value.trim(),code:$('pc').value.trim(),buy:+$('pb').value||0,sell:+$('ps').value||0,stock:+$('pq').value||0,min:+$('pm').value||0};if(!p.name)return alert('Enter product name');if(editing===null)db.products.push(p);else db.products[editing]=p;editing=null;save();stock()}
+function editProduct(i){editing=i;stock()}
+function deleteProduct(i){if(confirm('Delete this product?')){db.products.splice(i,1);save();stock()}}
+function stockIn(i){let n=prompt('Enter quantity to add:');if(n!==null&&+n>0){db.products[i].stock+=+n;save();stock()}}
+function bill(){
+ let opts=db.products.map((p,i)=>`<option value="${i}">${p.name} — ${money(p.sell)} — stock ${p.stock}</option>`).join('');
+ $('app').innerHTML=`<div class="card"><h3>Customer</h3><div class="grid"><input id="cn" placeholder="Customer name"><input id="cp" placeholder="Phone"></div></div>
+ <div class="card"><h3>Add item</h3><select id="bi">${opts||'<option>No products — add products in Stock</option>'}</select><div class="grid"><input id="bq" type="number" min="1" value="1" placeholder="Qty"><input id="bd" type="number" min="0" value="0" placeholder="Discount"></div><div class="actions"><button onclick="addItem()">Add Item</button><button class="secondary" onclick="scanForBill()">📷 Scan Product</button></div></div>
+ <div class="card"><h3>Current Bill</h3><div id="cart"></div></div>`;
+ renderCart();
+}
+function addItem(){let i=+$('bi').value,q=+$('bq').value||1,p=db.products[i];if(!p)return;if(q>p.stock)return alert('Insufficient stock');let x=cart.find(x=>x.i===i);if(x){if(x.qty+q>p.stock)return alert('Insufficient stock');x.qty+=q}else cart.push({i,name:p.name,qty:q,rate:p.sell,buy:p.buy});renderCart()}
+function renderCart(){let c=$('cart');if(!c)return;let sub=cart.reduce((s,x)=>s+x.qty*x.rate,0),disc=+$('bd')?.value||0,total=Math.max(0,sub-disc),profit=cart.reduce((s,x)=>s+x.qty*(x.rate-x.buy),0)-disc;
+ c.innerHTML=(cart.map((x,i)=>`<div class="item row"><span>${x.name}<br><small>${x.qty} × ${money(x.rate)}</small></span><span>${money(x.qty*x.rate)} <button onclick="cart.splice(${i},1);renderCart()">×</button></span></div>`).join('')||'<p class="muted">No items added.</p>')+
+ `<p class="right">Subtotal: ${money(sub)}<br>Discount: ${money(disc)}</p><div class="total">Total: ${money(total)}</div>
+ <div class="grid"><input id="paid" type="number" min="0" value="${total}" placeholder="Paid amount"><input id="due" readonly value="Due: ${money(0)}"></div>
+ <div class="actions"><button class="success" onclick="finishBill()">Save Bill</button><button class="secondary" onclick="printCurrent()">Print / Save PDF</button></div>`;
+ $('paid').oninput=()=>{$('due').value='Due: '+money(Math.max(0,total-(+$('paid').value||0)))};
+}
+function finishBill(){if(!cart.length)return alert('Add at least one item');let disc=+$('bd').value||0,sub=cart.reduce((s,x)=>s+x.qty*x.rate,0),total=Math.max(0,sub-disc),paid=Math.min(total,+$('paid').value||0),due=total-paid;
+ cart.forEach(x=>db.products[x.i].stock-=x.qty);let customer=($('cn').value||'').trim(),phone=($('cp').value||'').trim();let no='AK'+String(db.settings.nextBill++).padStart(5,'0');
+ let profit=cart.reduce((s,x)=>s+x.qty*(x.rate-x.buy),0)-disc;db.bills.push({no,date:new Date().toISOString(),customer,phone,items:cart.map(x=>({...x})),subtotal:sub,discount:disc,total,paid,due,profit});if(customer){let c=db.customers.find(c=>c.phone===phone&&phone);if(!c){c={name:customer,phone,paid:0,due:0};db.customers.push(c)}c.paid+=paid;c.due+=due}save();alert('Bill saved: '+no+'\\nTotal '+money(total)+'\\nDue '+money(due));cart=[];bill()}
+function receiptHTML(b){return `<div style="font-family:Arial;max-width:420px;margin:auto"><h2 style="text-align:center">${db.settings.shop}</h2><p style="text-align:center">GST 0%</p><hr><b>Bill:</b> ${b.no}<br><b>Date:</b> ${new Date(b.date).toLocaleString()}<br><b>Customer:</b> ${b.customer||'Walk-in'} ${b.phone?'<br><b>Phone:</b> '+b.phone:''}<hr>${b.items.map(x=>`${x.name} × ${x.qty} @ ${money(x.rate)} = ${money(x.qty*x.rate)}`).join('<br>')}<hr><b>Subtotal:</b> ${money(b.subtotal)}<br>Discount: ${money(b.discount)}<br><h3>Total: ${money(b.total)}</h3>Paid: ${money(b.paid)}<br>Due: ${money(b.due)}<p style="text-align:center">Thank you!</p></div>`}
+function printCurrent(){if(!cart.length)return alert('Save the bill first, then print it from Bills/History.');alert('Please save the bill first. Then use Print / Save PDF from Bill History.')}
+function customers(){ $('app').innerHTML=`<div class="card"><h3>Customer Ledger</h3>${db.customers.map((c,i)=>`<div class="item"><div class="row"><b>${c.name}</b><b class="${c.due?'dangerText':''}">${money(c.due)} due</b></div><div class="small muted">${c.phone||'-'} • Paid ${money(c.paid)}</div></div>`).join('')||'<p class="muted">Customers are added automatically when billing.</p>'}</div>`}
+function reports(){let now=new Date(),month=db.bills.filter(b=>{let d=new Date(b.date);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear()}),sales=month.reduce((s,b)=>s+b.total,0),profit=month.reduce((s,b)=>s+b.profit,0);
+ $('app').innerHTML=`<div class="grid"><div class="card"><div class="muted">This Month Sales</div><div class="stat">${money(sales)}</div></div><div class="card"><div class="muted">This Month Profit</div><div class="stat">${money(profit)}</div></div><div class="card"><div class="muted">Bills</div><div class="stat">${month.length}</div></div></div>
+ <div class="card"><h3>Bill History</h3><div class="actions"><button onclick="exportCSV()">Export CSV</button></div><div style="overflow:auto"><table><tr><th>Bill</th><th>Date</th><th>Customer</th><th class="right">Total</th><th class="right">Due</th><th></th></tr>${db.bills.slice().reverse().map((b,i)=>`<tr><td>${b.no}</td><td>${new Date(b.date).toLocaleDateString()}</td><td>${b.customer||'Walk-in'}</td><td class="right">${money(b.total)}</td><td class="right">${money(b.due)}</td><td><button class="secondary" onclick='printBill(${JSON.stringify(b.no)})'>Print/PDF</button></td></tr>`).join('')}</table></div></div>`}
+function printBill(no){let b=db.bills.find(x=>x.no===no);if(!b)return;let w=window.open('','_blank');if(!w)return alert('Allow popups for printing');w.document.write(receiptHTML(b)+'<script>window.print()<\/script>');w.document.close()}
+function exportCSV(){let rows=[['Bill','Date','Customer','Phone','Total','Paid','Due','Profit']].concat(db.bills.map(b=>[b.no,b.date,b.customer,b.phone,b.total,b.paid,b.due,b.profit]));download('ak_foods_bills.csv',rows.map(r=>r.map(x=>`"${String(x??'').replace(/"/g,'""')}"`).join(',')).join('\\n'),'text/csv')}
+function settings(){ $('app').innerHTML=`<div class="card"><h3>Shop Settings</h3><input id="shop" value="${db.settings.shop}"><input id="gst" type="number" value="0" readonly><button onclick="db.settings.shop=$('shop').value||'AK FOODS';save();alert('Saved')">Save Settings</button></div>
+ <div class="card"><h3>Backup</h3><p class="muted">Keep a backup before changing device or clearing browser data.</p><div class="actions"><button onclick="backup()">Export Backup</button><label style="display:inline-block"><button class="secondary">Import Backup</button><input id="imp" type="file" accept=".json" style="display:none" onchange="importBackup(event)"></label></div></div>
+ <div class="card"><h3>Tablet App</h3><p>Use your browser menu → <b>Add to Home screen</b> to make AK FOODS look like an app.</p><div class="notice">For offline use, open this app once while online so the browser can cache it.</div></div>`}
+function backup(){download('ak_foods_backup.json',JSON.stringify(db,null,2),'application/json')}
+function importBackup(e){let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(!x.products||!x.bills)throw 0;db=x;save();alert('Backup restored');go('home',document.querySelector('.tab'))}catch(_){alert('Invalid backup')}};r.readAsText(f)}
+function download(name,data,type){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+async function scanCode(){
+ if(!('BarcodeDetector' in window)){alert('Barcode camera scanning is not supported by this browser. Chrome on a supported Android tablet is recommended.');return}
+ let v=$('scanner'),stream;try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});v.style.display='block';v.srcObject=stream;await v.play();let detector=new BarcodeDetector();let timer=setInterval(async()=>{try{let codes=await detector.detect(v);if(codes[0]){pc.value=codes[0].rawValue;clearInterval(timer);stream.getTracks().forEach(t=>t.stop());v.style.display='none'}}catch(e){}},300)}catch(e){alert('Camera permission is required.')}}
+async function scanForBill(){alert('Scan a product from Stock first if your browser does not support barcode detection.')}
+window.addEventListener('online',()=>online.textContent='Online');window.addEventListener('offline',()=>online.textContent='Offline');online.textContent=navigator.onLine?'Online':'Offline';
+go('home',document.querySelector('.tab'));
+</script></body></html>

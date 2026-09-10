@@ -1,0 +1,9 @@
+{
+  "name": "AK FOODS Tablet Full App",
+  "short_name": "AK FOODS",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827",
+  "description": "AK FOODS billing and inventory tablet app"
+}
